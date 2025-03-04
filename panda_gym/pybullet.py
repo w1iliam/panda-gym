@@ -58,6 +58,13 @@ class PyBullet:
         self.physics_client.setGravity(0, 0, -9.81)
         self._bodies_idx = {}
 
+        self.robot_body_name = "panda"
+        self.robot_camera_link = 8
+        self.camera_pos_local_offset = np.array([0.05, 0.0, 0.02])
+        self.image_resolution_width = 128
+        self.image_resolution_height = 72
+        self.curr_euclid_dist = -1
+
     @property
     def dt(self):
         """Timestep."""
@@ -383,6 +390,102 @@ class PyBullet:
             cameraTargetPosition=target_position,
         )
 
+    def take_image(self):
+        camera_pos = self.get_link_position(self.robot_body_name, self.robot_camera_link)
+        camera_ori = self.get_link_orientation(self.robot_body_name, self.robot_camera_link)
+        camera_pos = list(camera_pos)
+
+        view_matrix = self.get_view_matrix(camera_pos, camera_ori)
+
+        proj_matrix = self.get_proj_matrix()
+
+        return (self.physics_client.getCameraImage(width=self.image_resolution_width,
+                                                   height=self.image_resolution_height,
+                                                   viewMatrix=view_matrix,
+                                                   projectionMatrix=proj_matrix,
+                                                   renderer=p.ER_BULLET_HARDWARE_OPENGL), view_matrix, proj_matrix, camera_pos)
+
+
+    def get_view_matrix(self, camera_pos, camera_ori):
+
+        rot_matrix = p.getMatrixFromQuaternion(camera_ori)
+        rot_matrix = np.array(rot_matrix).reshape(3, 3)
+
+        world_offset = np.dot(rot_matrix, self.camera_pos_local_offset)
+        camera_pos += world_offset
+
+        init_camera_vector = (0, 0, 1)  # z-axis
+        init_up_vector = (1, 0, 0)  # y-axis
+
+        camera_vector = rot_matrix.dot(init_camera_vector)
+        up_vector = rot_matrix.dot(init_up_vector)
+
+        view_matrix = p.computeViewMatrix(camera_pos, camera_pos + 0.1 * camera_vector, up_vector)
+
+        return view_matrix
+
+    def get_proj_matrix(self):
+        proj_matrix = p.computeProjectionMatrixFOV(
+            fov=60, aspect=float(self.image_resolution_width) / self.image_resolution_height, nearVal=0.001, farVal=10.0
+        )
+
+        return proj_matrix
+
+    def get_point_cloud(self, view_matrix, proj_matrix, img):
+        # based on https://stackoverflow.com/questions/59128880/getting-world-coordinates-from-opengl-depth-buffer
+
+        width = self.image_resolution_width
+        height = self.image_resolution_height
+
+        depth = np.array(img[3],dtype=np.float32)
+
+        # create a 4x4 transform matrix that goes from pixel coordinates (and depth values) to world coordinates
+        proj_matrix = np.asarray(proj_matrix).reshape([4, 4], order="F")
+        view_matrix = np.asarray(view_matrix).reshape([4, 4], order="F")
+        tran_pix_world = np.linalg.inv(np.matmul(proj_matrix, view_matrix))
+
+        # create a grid with pixel coordinates and depth values
+        y, x = np.mgrid[-1:1:2 / height, -1:1:2 / width]
+        y *= -1.
+        x, y, z = x.reshape(-1), y.reshape(-1), depth.reshape(-1)
+        h = np.ones_like(z)
+
+        pixels = np.stack([x, y, z, h], axis=1)
+        pixels[:, 2] = 2 * pixels[:, 2] - 1
+
+        # turn pixels to world coordinates
+        points = np.matmul(tran_pix_world, pixels.T).T
+        points /= points[:, 3: 4]
+        points = points[:, :3]
+
+        return points
+
+    def return_closest_dist(self, ee_position, points):
+        min_dist = 1000
+        min_pos = np.zeros(3)
+        for i in range(0, len(points), 50):
+            dist = np.linalg.norm(ee_position - points[i], axis=-1)
+
+            if dist <= min_dist:
+                min_dist = dist
+                min_pos = points[i]
+
+        min_vector_dist = np.abs(ee_position - min_pos)
+
+        return min_vector_dist, min_dist
+
+    def get_closest_dist(self, ee_position):
+        img, view_matrix, proj_matrix, camera_pos = self.take_image()
+
+        points = self.get_point_cloud(view_matrix, proj_matrix, img)
+
+        min_vector_dist, min_euclid_dist = self.return_closest_dist(ee_position, points)
+
+        min_euclid_dist = np.array([min_euclid_dist])
+        self.curr_euclid_dist = min_euclid_dist[0]
+
+        return min_vector_dist, min_euclid_dist
+
     @contextmanager
     def no_rendering(self) -> Iterator[None]:
         """Disable rendering within this context."""
@@ -667,3 +770,8 @@ class PyBullet:
             linkIndex=link,
             spinningFriction=spinning_friction,
         )
+
+    def is_collision(self, margin=0.022):
+        ds = self.curr_euclid_dist
+        collision = ds < margin
+        return collision

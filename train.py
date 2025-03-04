@@ -2,6 +2,7 @@ import gymnasium as gym
 import torch
 
 import custom_env
+import panda_gym
 from sb3_contrib import TQC
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
@@ -10,7 +11,7 @@ from stable_baselines3 import HerReplayBuffer, DDPG, SAC
 env_name = "CustomPickAndPlace-v3"
 env = gym.make(env_name, render_mode='human', renderer='OpenGL')
 env = Monitor(env)
-model = TQC(
+model = SAC(
     env=env,
     policy='MultiInputPolicy',
     replay_buffer_class=HerReplayBuffer,
@@ -28,7 +29,7 @@ model = TQC(
     tensorboard_log="./tensorboard/PandaReach_TQC/",
     device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 )
-model.learn(total_timesteps=1e4)
+model.learn(total_timesteps=1e6)
 mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=10, render=False)
 env.close()
 print(mean_reward, std_reward)

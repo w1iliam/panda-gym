@@ -15,7 +15,7 @@ class CustomPickAndPlace(Task):
         distance_threshold: float = 0.05,
         goal_xy_range: float = 0.3,
         goal_z_range: float = 0.2,
-        obj_xy_range: float = 0.3,
+        obj_xy_range: float = 0.2,
     ) -> None:
         super().__init__(sim)
         self.reward_type = reward_type
@@ -51,14 +51,14 @@ class CustomPickAndPlace(Task):
         #swap depth and width around
         shelf_width = 0.2
         shelf_depth = 0.6
-        shelf_height = 1.0
+        shelf_height = 0.8
         thickness = 0.02
 
         self.sim.create_box(
             body_name="shelf_base",
             half_extents=np.array([shelf_width / 2, shelf_depth / 2, thickness / 2]),
             mass=0.0,
-            position=np.array([0.3, 0.0, 0.0]),
+            position=np.array([0.2, 0.0, 0.0]),
             rgba_color=np.array([0.6, 0.3, 0.1, 1.0]),
         )
 
@@ -66,7 +66,7 @@ class CustomPickAndPlace(Task):
             body_name="shelf_surface",
             half_extents=np.array([shelf_width / 2, shelf_depth / 2, thickness / 2]),
             mass=0.0,
-            position=np.array([0.3, 0.0, shelf_height / 2]),
+            position=np.array([0.2, 0.0, shelf_height / 2]),
             rgba_color=np.array([0.6, 0.3, 0.1, 1.0]),
         )
 
@@ -74,7 +74,7 @@ class CustomPickAndPlace(Task):
             body_name="shelf_left",
             half_extents=np.array([shelf_width / 2, thickness / 2, shelf_height / 2]),
             mass=0.0,
-            position=np.array([0.3, shelf_depth / 2, shelf_height / 2]),
+            position=np.array([0.2, shelf_depth / 2, shelf_height / 2]),
             rgba_color=np.array([0.6, 0.3, 0.1, 1.0]),
         )
 
@@ -82,7 +82,7 @@ class CustomPickAndPlace(Task):
             body_name="shelf_right",
             half_extents=np.array([thickness / 2, shelf_depth / 2, shelf_height / 2]),
             mass=0.0,
-            position=np.array([(shelf_width / 2)+0.3, 0.0, 0.0 + shelf_height / 2]),
+            position=np.array([(shelf_width / 2)+0.2, 0.0, 0.0 + shelf_height / 2]),
             rgba_color=np.array([0.6, 0.3, 0.1, 1.0]),
         )
 
@@ -90,7 +90,7 @@ class CustomPickAndPlace(Task):
             body_name="shelf_back",
             half_extents=np.array([shelf_width / 2, thickness / 2, shelf_height / 2]),
             mass=0.0,
-            position=np.array([0.3, -shelf_depth / 2, 0.0 + shelf_height / 2]),
+            position=np.array([0.2, -shelf_depth / 2, 0.0 + shelf_height / 2]),
             rgba_color=np.array([0.6, 0.3, 0.1, 1.0]),
         )
 
@@ -98,7 +98,7 @@ class CustomPickAndPlace(Task):
             body_name="shelf_top",
             half_extents=np.array([shelf_width / 2, shelf_depth / 2, thickness / 2]),
             mass=0.0,
-            position=np.array([0.3, 0.0, shelf_height]),
+            position=np.array([0.2, 0.0, shelf_height]),
             rgba_color=np.array([0.6, 0.3, 0.1, 1.0]),
         )
 
@@ -118,13 +118,16 @@ class CustomPickAndPlace(Task):
     def reset(self) -> None:
         self.goal = self._sample_goal()
         object_position = self._sample_object()
-        self.sim.set_base_pose("target", self.goal, np.array([0.0, 0.0, 0.0, 1.0]))
+        self.sim.set_base_pose("target", self.goal, np.array([0.0, 0.0, 0.80, 1.0]))
         self.sim.set_base_pose("object", object_position, np.array([0.0, 0.0, 0.0, 1.0]))
 
     def _sample_goal(self) -> np.ndarray:
-        """Sample a goal."""
-        goal = np.array([0.3, 0.0, (self.object_size/2)+0.51])  # z offset for the cube center
-        return goal
+        # Shelf center position
+        goal_x = 0.2
+        goal_y = self.np_random.uniform(-0.1, 0.1)  # Add randomness along y-axis
+        goal_z = (self.object_size / 2) + 0.01  # Height of the shelf
+
+        return np.array([goal_x, goal_y, goal_z])
 
     def _sample_object(self) -> np.ndarray:
         """Randomize start position of object."""
@@ -139,7 +142,14 @@ class CustomPickAndPlace(Task):
 
     def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info: Dict[str, Any] = {}) -> np.ndarray:
         d = distance(achieved_goal, desired_goal)
+
+        object_height = float(self.sim.get_base_position("object")[2])
+        lifting_bonus = min(1.0, max(0.0, object_height - 0.05))
+
+        gripper_distance = np.linalg.norm(self.sim.get_link_position(self.sim.robot_body_name,8)- self.sim.get_base_position("object"))
+        approach_bonus = 0.3 * (1 - np.tanh(gripper_distance * 5))
+
         if self.reward_type == "sparse":
-            return -np.array(d > self.distance_threshold, dtype=np.float32)
+            return -np.array(d > self.distance_threshold, dtype=np.float32) + approach_bonus + lifting_bonus
         else:
-            return -d.astype(np.float32)
+            return -d.astype(np.float32) + lifting_bonus + approach_bonus

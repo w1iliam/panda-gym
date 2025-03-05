@@ -143,13 +143,13 @@ class CustomPickAndPlace(Task):
     def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info: Dict[str, Any] = {}) -> np.ndarray:
         d = distance(achieved_goal, desired_goal)
 
-        object_height = float(self.sim.get_base_position("object")[2])
-        lifting_bonus = min(1.0, max(0.0, object_height - 0.05))
+        #object_height = float(self.sim.get_base_position("object")[2])
+        #lifting_bonus = min(1.0, max(0.0, object_height - 0.05))
 
         gripper_distance = np.linalg.norm(self.sim.get_link_position(self.sim.robot_body_name,8)- self.sim.get_base_position("object"))
         approach_bonus = 0.3 * (1 - np.tanh(gripper_distance * 5))
 
         if self.reward_type == "sparse":
-            return -np.array(d > self.distance_threshold, dtype=np.float32) + approach_bonus + lifting_bonus
+            return -np.array(d > self.distance_threshold, dtype=np.float32) + approach_bonus #+ lifting_bonus
         else:
-            return -d.astype(np.float32) + lifting_bonus + approach_bonus
+            return -d.astype(np.float32)  + approach_bonus #+ lifting_bonus

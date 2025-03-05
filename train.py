@@ -8,17 +8,17 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3 import HerReplayBuffer, DDPG, SAC
 
-env_name = "CustomPickAndPlace-v3"
+env_name = "CustomPickAndPlaceDense-v3"
 env = gym.make(env_name, render_mode='human', renderer='OpenGL')
 env = Monitor(env)
 model = SAC(
     env=env,
     policy='MultiInputPolicy',
-    replay_buffer_class=HerReplayBuffer,
-    replay_buffer_kwargs=dict(
-        n_sampled_goal=4,
-        goal_selection_strategy='future',
-    ),
+    # replay_buffer_class=HerReplayBuffer,
+    # replay_buffer_kwargs=dict(
+    #     n_sampled_goal=4,
+    #     goal_selection_strategy='future',
+    # ),
     tau=0.05,
     buffer_size=1000000,
     batch_size=256,

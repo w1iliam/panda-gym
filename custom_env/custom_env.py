@@ -75,7 +75,8 @@ class CustomPickAndPlaceEnv(RobotTaskEnv):
         observation = self._get_obs()
         # An episode is terminated iff the agent has reached the target
         if self.sim.is_collision(self.obstacle_collision_margin):
-            print("COLLISION\nCOLLISION\nCOLLISION\nCOLLISION\nCOLLISION")
+            with open("collision.txt", "w") as file:
+                file.write("Collision detected\n")
             terminated = True
             info = {"is_success": False, "is_collision": True}
         else:

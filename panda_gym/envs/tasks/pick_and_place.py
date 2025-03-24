@@ -89,7 +89,29 @@ class PickAndPlace(Task):
 
     def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info: Dict[str, Any] = {}) -> np.ndarray:
         d = distance(achieved_goal, desired_goal)
+
+        gripper_distance = np.linalg.norm(self.sim.get_link_position("panda",8)- self.sim.get_base_position("object"))
+        approach_bonus = 0.7 * (1 - np.tanh(gripper_distance * 5))
+        # lift_bonus = 0.0
+        # if self.sim.get_base_position("object")[2]>0.02:
+        #     lift_bonus = 10
+
+        robot_id = self.sim.get_bodies_id("panda")
+        target_id = self.sim.get_bodies_id("target")
+        object_id = self.sim.get_bodies_id("object")
+        punishment = 0
+        print("finger1")
+        print(np.linalg.norm(self.sim.get_link_position("panda",9) - self.sim.get_base_position("object")))
+        print("finger2")
+        print(np.linalg.norm(self.sim.get_link_position("panda",10)-self.sim.get_base_position("object")))
+        for i in range(self.sim.physics_client.getNumBodies()):
+            if i not in {robot_id, target_id, object_id}:
+                contact_points = self.sim.physics_client.getContactPoints(robot_id, i)
+                if contact_points:
+                    print(f"collision with {self.sim.get_bodies_name(i)}")
+                    punishment = 0.3
+
         if self.reward_type == "sparse":
-            return -np.array(d > self.distance_threshold, dtype=np.float32)
+            return -np.array(d > self.distance_threshold, dtype=np.float32) + approach_bonus - punishment
         else:
-            return -d.astype(np.float32)
+            return -d.astype(np.float32) + approach_bonus - punishment

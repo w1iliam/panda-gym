@@ -1,6 +1,9 @@
 from typing import Any, Dict
 
 import numpy as np
+import pybullet
+from pybullet import getContactPoints, getNumBodies, getCollisionShapeData
+from pybullet_utils.examples.mjcf2urdf import robotName
 
 from panda_gym.envs.core import Task
 from panda_gym.pybullet import PyBullet
@@ -82,7 +85,7 @@ class CustomPickAndPlace(Task):
             body_name="shelf_right",
             half_extents=np.array([thickness / 2, shelf_depth / 2, shelf_height / 2]),
             mass=0.0,
-            position=np.array([(shelf_width / 2)+0.2, 0.0, 0.0 + shelf_height / 2]),
+            position=np.array([(shelf_width / 2) + 0.2, 0.0, 0.0 + shelf_height / 2]),
             rgba_color=np.array([0.6, 0.3, 0.1, 1.0]),
         )
 
@@ -125,7 +128,7 @@ class CustomPickAndPlace(Task):
         # Shelf center position
         goal_x = 0.2
         goal_y = self.np_random.uniform(-0.1, 0.1)  # Add randomness along y-axis
-        goal_z = (self.object_size / 2) + 0.01  # Height of the shelf
+        goal_z = (self.object_size / 2) + 0.41  # Height of the shelf
 
         return np.array([goal_x, goal_y, goal_z])
 
@@ -143,13 +146,32 @@ class CustomPickAndPlace(Task):
     def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info: Dict[str, Any] = {}) -> np.ndarray:
         d = distance(achieved_goal, desired_goal)
 
-        #object_height = float(self.sim.get_base_position("object")[2])
-        #lifting_bonus = min(1.0, max(0.0, object_height - 0.05))
+        robot_id = self.sim.get_bodies_id("panda")
+        target_id = self.sim.get_bodies_id("target")
+        object_id = self.sim.get_bodies_id("object")
+        punishment = 0
+        object_position = self.sim.get_base_position("object")
+        touched = 0
 
-        gripper_distance = np.linalg.norm(self.sim.get_link_position(self.sim.robot_body_name,8)- self.sim.get_base_position("object"))
-        approach_bonus = 0.3 * (1 - np.tanh(gripper_distance * 5))
+        for i in range(self.sim.physics_client.getNumBodies()):
+            if i not in {robot_id, target_id}:
+                contact_points = self.sim.physics_client.getContactPoints(robot_id, i)
+                if i == object_id and contact_points:
+                    touched = 0.0
+                    continue
+                if contact_points:
+                    print(f"collision with {self.sim.get_bodies_name(i)}")
+                    punishment = 0.4
+
+        gripper_distance = np.linalg.norm(self.sim.get_link_position("panda",8)- object_position)
+        approach_bonus = 0.7 * (1 - np.tanh(gripper_distance * 5))
+
+        if object_position[2] > 0.02:
+            lift_bonus = 0.7
+        else:
+            lift_bonus = 0
 
         if self.reward_type == "sparse":
-            return -np.array(d > self.distance_threshold, dtype=np.float32) + approach_bonus #+ lifting_bonus
+            return -np.array(d > self.distance_threshold, dtype=np.float32) + approach_bonus - punishment + lift_bonus + touched
         else:
-            return -d.astype(np.float32)  + approach_bonus #+ lifting_bonus
+            return -d.astype(np.float32) + approach_bonus - punishment + lift_bonus+ touched

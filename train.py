@@ -1,5 +1,6 @@
 import gymnasium as gym
 import torch
+from gymnasium.wrappers import TimeLimit
 
 import custom_env
 import panda_gym
@@ -14,11 +15,11 @@ env = Monitor(env)
 model = SAC(
     env=env,
     policy='MultiInputPolicy',
-    # replay_buffer_class=HerReplayBuffer,
-    # replay_buffer_kwargs=dict(
-    #     n_sampled_goal=4,
-    #     goal_selection_strategy='future',
-    # ),
+    replay_buffer_class=HerReplayBuffer,
+    replay_buffer_kwargs=dict(
+        n_sampled_goal=4,
+        goal_selection_strategy='future',
+    ),
     tau=0.05,
     buffer_size=1000000,
     batch_size=256,
@@ -29,7 +30,7 @@ model = SAC(
     tensorboard_log="./tensorboard/PandaReach_TQC/",
     device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 )
-model.learn(total_timesteps=1e6)
+model.learn(total_timesteps=3e6)
 mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=10, render=False)
 env.close()
 print(mean_reward, std_reward)
